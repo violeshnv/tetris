@@ -1,5 +1,4 @@
 use super::frame::Frame;
-use super::random;
 use super::state;
 use super::{block, event, frame, painter};
 
@@ -45,7 +44,12 @@ impl Handler {
     }
 
     fn resize(painter: &Arc<painter::Painter>, state: &Arc<state::State>) {
-        frame::GameFrame::reset_painter_size(painter);
+        let size = frame::GameFrame::get_terminal_size();
+        frame::GameFrame::flush_terminal_size(painter);
+        if let Some(_) = frame::GameFrame::test_terminal_size(state) {
+            frame::GameFrame::set_terminal_size(size, painter);
+            return;
+        }
 
         painter.clear_all().unwrap();
         frame::GameFrame::draw(painter, state);
@@ -67,11 +71,7 @@ impl Handler {
         state.timer.resume();
     }
 
-    fn drop(
-        gen: &mut random::RandomGen<{ block::BLOCKS.len() * block::ORIENTATION_COUNT }>,
-        painter: &Arc<painter::Painter>,
-        state: &Arc<state::State>,
-    ) {
+    fn drop(painter: &Arc<painter::Painter>, state: &Arc<state::State>) {
         // ! danger of dead lock: two_blocks, stacked_blocks
         // ! drop to avoid dead lock
         frame::GameFrame::reset_falling(painter, state);
@@ -99,13 +99,11 @@ impl Handler {
 
             drop(lock);
             frame::GameFrame::draw_stacked(painter, state);
-            Self::generate_new_block(gen, painter, state);
+            Self::generate_new_block(painter, state);
             Self::settle_up(painter, state);
         }
 
-        let mut lock = state.timer.lock_cond().0.lock().unwrap();
-        lock.set_now::<1>();
-        drop(lock);
+        state.timer.lock_cond().0.lock().unwrap().set_now::<1>();
     }
 
     fn translate(to: &block::Point, painter: &Arc<painter::Painter>, state: &Arc<state::State>) {
@@ -157,11 +155,7 @@ impl Handler {
         Self::rotate(-1, painter, state);
     }
 
-    fn hard_drop(
-        gen: &mut random::RandomGen<{ block::BLOCKS.len() * block::ORIENTATION_COUNT }>,
-        painter: &Arc<painter::Painter>,
-        state: &Arc<state::State>,
-    ) {
+    fn hard_drop(painter: &Arc<painter::Painter>, state: &Arc<state::State>) {
         // ! danger of dead lock: two_blocks, stacked_blocks
         // ! drop to avoid dead lock
         frame::GameFrame::reset_falling(painter, state);
@@ -176,7 +170,7 @@ impl Handler {
         block.shift(&TO_RISE_POINT);
         drop(lock);
 
-        Self::drop(gen, painter, state);
+        Self::drop(painter, state);
     }
 
     fn score_update(
@@ -239,14 +233,10 @@ impl Handler {
         state.timer.resume();
     }
 
-    fn generate_new_block(
-        gen: &mut random::RandomGen<{ block::BLOCKS.len() * block::ORIENTATION_COUNT }>,
-        painter: &Arc<painter::Painter>,
-        state: &Arc<state::State>,
-    ) {
+    fn generate_new_block(painter: &Arc<painter::Painter>, state: &Arc<state::State>) {
         frame::NextBlockFrame::reset_inner(painter, state);
 
-        let x = gen.gen();
+        let x = rand::random::<usize>() % (block::BLOCKS.len() * block::ORIENTATION_COUNT);
         let (b, o) = (x / block::ORIENTATION_COUNT, x % block::ORIENTATION_COUNT);
         let block = Box::new(block::FallingBlock::new(b, o));
         let _block = state.two_blocks.lock().unwrap().push(block);
@@ -296,6 +286,7 @@ impl Handler {
             while !state.quit() {
                 let secs = timer_rx.recv().unwrap() as u32;
                 Self::time_update(secs, &painter, &state);
+                painter.flush().unwrap();
             }
         });
 
@@ -309,9 +300,8 @@ impl Handler {
         state: Arc<state::State>,
     ) {
         let handler = thread::spawn(move || {
-            let mut gen = random::RandomGen::default();
             Self::resize(&painter, &state);
-            Self::generate_new_block(&mut gen, &painter, &state);
+            Self::generate_new_block(&painter, &state);
             frame::GameFrame::draw_inner(&painter, &state);
 
             painter.flush().unwrap();
@@ -339,10 +329,10 @@ impl Handler {
                     event::Event::Toggle => Self::pause(&painter, &state),
                     event::Event::ClockRotate => Self::clock_rotate(&painter, &state),
                     event::Event::InverseRotate => Self::inverse_rotate(&painter, &state),
-                    event::Event::Drop => Self::drop(&mut gen, &painter, &state),
+                    event::Event::Drop => Self::drop(&painter, &state),
                     event::Event::Left => Self::left(&painter, &state),
                     event::Event::Right => Self::right(&painter, &state),
-                    event::Event::HardDrop => Self::hard_drop(&mut gen, &painter, &state),
+                    event::Event::HardDrop => Self::hard_drop(&painter, &state),
                     event::Event::Resize => Self::resize(&painter, &state),
                 }
 

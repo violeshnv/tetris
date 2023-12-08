@@ -54,24 +54,42 @@ pub trait Frame {
 
     fn get_borders(state: &Arc<state::State>) -> (u16, u16, u16, u16);
 
+    fn get_inner_borders(state: &Arc<state::State>) -> (u16, u16, u16, u16) {
+        let (top, bottom, left, right) = Self::get_borders(state);
+        (top + 1, bottom - 1, left + 1, right - 1)
+    }
+
     fn draw_border(painter: &Arc<painter::Painter>, state: &Arc<state::State>);
     fn draw_inner(painter: &Arc<painter::Painter>, state: &Arc<state::State>);
 
-    fn reset_painter_size(painter: &Arc<painter::Painter>) {
+    fn flush_terminal_size(painter: &Arc<painter::Painter>) {
         let (col, row) = painter.get_size().unwrap_or((0, 0));
         TERMINAL_WIDTH.store(col, Ordering::Relaxed);
         TERMINAL_HEIGHT.store(row, Ordering::Relaxed);
     }
 
-    fn test_terminal_size(painter: &Arc<painter::Painter>, state: &Arc<state::State>) -> bool {
-        Self::reset_painter_size(painter);
-        let (col, row) = (
+    fn get_terminal_size() -> (u16, u16) {
+        (
             TERMINAL_WIDTH.load(Ordering::Relaxed),
             TERMINAL_HEIGHT.load(Ordering::Relaxed),
-        );
-        let (c, r) = state.get_game_size();
+        )
+    }
 
-        row >= r + 2 && col >= c + 2 + RIGHT_SIDE_WIDTH
+    fn set_terminal_size(size: (u16, u16), painter: &Arc<painter::Painter>) {
+        painter.resize(size).unwrap();
+    }
+
+    fn test_terminal_size(state: &Arc<state::State>) -> Option<((u16, u16), (u16, u16))> {
+        let (col, row) = Self::get_terminal_size();
+
+        let (c, r) = state.get_game_size();
+        let (c, r) = (c + 2 + RIGHT_SIDE_WIDTH, r + 2);
+
+        if row >= r && col >= c {
+            None
+        } else {
+            Some(((col, c), (row, r)))
+        }
     }
 
     /// (top, bottom, left, right, middle)
@@ -98,7 +116,7 @@ pub trait Frame {
 pub struct GameFrame;
 impl GameFrame {
     pub fn draw_pause(painter: &Arc<painter::Painter>, state: &Arc<state::State>) {
-        let (top, bottom, left, right) = Self::get_borders(state);
+        let (top, bottom, left, right) = Self::get_inner_borders(state);
         let (color, s, width, height) = PAUSE_PRINT;
         let pos = (
             (left + right - width) / 2 + 1,
@@ -106,9 +124,7 @@ impl GameFrame {
         );
         let it = s.split('\n').into_iter().map(|s| s.as_bytes());
 
-        painter
-            .clear((top + 1, bottom - 1, left + 1, right - 1))
-            .unwrap();
+        painter.clear((top, bottom, left, right)).unwrap();
         painter.multiple_writeln_at(color, pos, it).unwrap();
     }
 
@@ -117,8 +133,7 @@ impl GameFrame {
         state: &Arc<state::State>,
         lines: &Vec<usize>,
     ) {
-        let (_, bottom, left, _) = Self::get_borders(state);
-        let (bottom, left) = (bottom - 1, left + 1);
+        let (_, bottom, left, _) = Self::get_inner_borders(state);
         let block_count = state.get_size().0;
 
         for i in lines {
@@ -146,10 +161,10 @@ impl GameFrame {
         painter: &Arc<painter::Painter>,
         state: &Arc<state::State>,
     ) {
-        let (_, bottom, left, _) = Self::get_borders(state);
+        let (_, bottom, left, _) = Self::get_inner_borders(state);
         let (col, row) = state.get_size();
 
-        let left_bottom = (left + 1, bottom - 1);
+        let left_bottom = (left, bottom);
 
         let lock = state.two_blocks.lock().unwrap();
         let color = color.unwrap_or(*lock.current_block().color());
@@ -169,8 +184,8 @@ impl GameFrame {
     }
 
     pub fn draw_stacked(painter: &Arc<painter::Painter>, state: &Arc<state::State>) {
-        let (_, bottom, left, _) = Self::get_borders(state);
-        let left_bottom = (left + 1, bottom - 1);
+        let (_, bottom, left, _) = Self::get_inner_borders(state);
+        let left_bottom = (left, bottom);
 
         // ! danger of dead lock: stacked_blocks and painter
         let lock = state.stacked_blocks.lock().unwrap();
@@ -209,10 +224,8 @@ impl Frame for GameFrame {
     }
 
     fn draw_inner(painter: &Arc<painter::Painter>, state: &Arc<state::State>) {
-        let (top, bottom, left, right) = Self::get_borders(state);
-        painter
-            .clear((top + 1, bottom - 1, left + 1, right - 1))
-            .unwrap();
+        let (top, bottom, left, right) = Self::get_inner_borders(state);
+        painter.clear((top, bottom, left, right)).unwrap();
         Self::draw_stacked(painter, state);
         Self::draw_falling(painter, state);
     }
@@ -228,8 +241,8 @@ impl RecordFrame {
     }
 
     pub fn draw_time(painter: &Arc<painter::Painter>, state: &Arc<state::State>) {
-        let (top, _, left, _) = Self::get_borders(state);
-        let pos = (left + 1 + RECORD_LEFT_WIDTH, top + 2);
+        let (top, _, left, _) = Self::get_inner_borders(state);
+        let pos = (left + RECORD_LEFT_WIDTH, top + 2);
         let secs = state.record.lock().unwrap().secs;
 
         painter
@@ -262,12 +275,14 @@ impl Frame for RecordFrame {
             .draw_rect(BOARDER_COLOR, (top, bottom, left, right))
             .unwrap();
 
+        let (top, _, left, _) = Self::get_inner_borders(state);
+
         painter
             .write_at(
                 BOARDER_COLOR,
-                (left + 1, top + 1),
+                (left, top),
                 format!(
-                    "{:^width$}",
+                    " {:^width$}",
                     "RECORD",
                     width = RECORD_FRAME_WIDTH as usize - 2
                 )
@@ -277,8 +292,8 @@ impl Frame for RecordFrame {
     }
 
     fn draw_inner(painter: &Arc<painter::Painter>, state: &Arc<state::State>) {
-        let (top, _, left, _) = Self::get_borders(state);
-        let pos = (left + 1, top + 2);
+        let (top, _, left, _) = Self::get_inner_borders(state);
+        let pos = (left, top + 1);
 
         let state::Record {
             secs,
@@ -289,6 +304,7 @@ impl Frame for RecordFrame {
 
         let record_string = format!(
             concat!(
+                " \n",
                 " time: {:^width$}\n",
                 " \n",
                 " line: {:^width$}\n",
@@ -320,8 +336,11 @@ impl NextBlockFrame {
         painter: &Arc<painter::Painter>,
         state: &Arc<state::State>,
     ) {
-        let (_, bottom, left, _) = Self::get_borders(state);
-        let left_bottom = (left + 1 + 1, bottom - 1 - 1);
+        let (_, bottom, left, _) = Self::get_inner_borders(state);
+        let left_bottom = (
+            left + (NEXT_BLOCK_FRAME_WIDTH - (block::POINT_OF_BLOCK_COUNT as u16 * 2)) / 2,
+            bottom + 1 - (NEXT_BLOCK_FRAME_HEIGHT - block::POINT_OF_BLOCK_COUNT as u16) / 2,
+        );
 
         let color = color.unwrap_or(*state.two_blocks.lock().unwrap().next_block().color());
         let points = *state.two_blocks.lock().unwrap().next_block().points();
@@ -351,12 +370,14 @@ impl Frame for NextBlockFrame {
             .draw_rect(BOARDER_COLOR, (top, bottom, left, right))
             .unwrap();
 
+        let (top, _, left, _) = Self::get_inner_borders(state);
+
         painter
             .write_at(
                 BOARDER_COLOR,
-                (left + 1, top + 1),
+                (left, top),
                 format!(
-                    "{:^width$}",
+                    " {:^width$}",
                     "NEXT",
                     width = NEXT_BLOCK_FRAME_WIDTH as usize - 2
                 )

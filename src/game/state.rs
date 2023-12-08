@@ -81,7 +81,7 @@ impl State {
             quit_signal: AtomicBool::new(false),
             handle_signal: AtomicBool::new(true),
             timer: Default::default(),
-            record: Mutex::new(Default::default()),
+            record: Default::default(),
             two_blocks: Mutex::new(TwoBlocks::new(Box::new(curr), Box::new(next))),
             stacked_blocks: Mutex::new(block::StackedBlock::new(column, row)),
         }

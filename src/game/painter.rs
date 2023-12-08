@@ -43,6 +43,10 @@ impl Painter {
         painter
     }
 
+    fn stdout_lock(&self) -> MutexGuard<'_, Terminal<Stdout>> {
+        self.stdout.lock().unwrap()
+    }
+
     /// (top, bottom, left, right)
     pub fn clear(&self, boarders: (u16, u16, u16, u16)) -> Result<()> {
         let (top, bottom, left, right) = boarders;
@@ -56,8 +60,11 @@ impl Painter {
         Ok(())
     }
 
-    fn stdout_lock(&self) -> MutexGuard<'_, Terminal<Stdout>> {
-        self.stdout.lock().unwrap()
+    // (col, row)
+    pub fn resize(&self, size: (u16, u16)) -> Result<()> {
+        self.stdout_lock()
+            .act(Action::SetTerminalSize(size.0, size.1))?;
+        Ok(())
     }
 
     pub fn clear_all(&self) -> Result<()> {

@@ -67,7 +67,7 @@ impl Trigger {
                     }
                     duration += Duration::from_secs(1);
                 } else {
-                    thread::sleep(diff.min(Duration::from_millis(800)));
+                    thread::sleep(diff);
                 }
             } else {
                 panic!("keeper ensure no pause");
@@ -125,7 +125,7 @@ impl Trigger {
                     {
                         break;
                     }
-                    thread::sleep(duration);
+                    thread::sleep(duration / 2);
                 } else {
                     thread::sleep(diff);
                 }
