@@ -67,6 +67,8 @@ pub struct State {
     pub two_blocks: Mutex<TwoBlocks>,
 
     pub stacked_blocks: Mutex<block::StackedBlock>,
+
+    pub message: Mutex<Option<String>>,
 }
 
 impl State {
@@ -84,6 +86,7 @@ impl State {
             record: Default::default(),
             two_blocks: Mutex::new(TwoBlocks::new(Box::new(curr), Box::new(next))),
             stacked_blocks: Mutex::new(block::StackedBlock::new(column, row)),
+            message: Default::default(),
         }
     }
 
@@ -111,6 +114,14 @@ impl Drop for State {
             score,
             speed,
         } = *self.record.lock().unwrap();
+
+        if let Some(message) = &*self.message.lock().unwrap() {
+            println!("{}", message);
+        }
+
+        if score == 0 {
+            return;
+        }
 
         println!(
             concat!(

@@ -1,6 +1,10 @@
 mod game;
 
-pub fn main() {
+pub fn main() -> Result<(), String> {
     let mut game = game::Game::new();
-    game.start();
+    if let Err(s) = game.start() {
+        println!("{}", s);
+        return Err(s);
+    }
+    Ok(())
 }

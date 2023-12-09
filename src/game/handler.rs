@@ -44,17 +44,30 @@ impl Handler {
     }
 
     fn resize(painter: &Arc<painter::Painter>, state: &Arc<state::State>) {
+        state.timer.pause();
+        state.handle_signal.store(false, Ordering::Relaxed);
+
         let size = frame::GameFrame::get_terminal_size();
         frame::GameFrame::flush_terminal_size(painter);
-        if let Some(_) = frame::GameFrame::test_terminal_size(state) {
+
+        if frame::GameFrame::test_terminal_size(state).is_err() {
+            // try to recover
             frame::GameFrame::set_terminal_size(size, painter);
-            return;
+
+            frame::GameFrame::flush_terminal_size(painter);
+            if frame::GameFrame::test_terminal_size(state).is_err() {
+                // fail to recover
+                Self::quit(painter, state);
+            }
+        } else {
+            painter.clear_all().unwrap();
+            frame::GameFrame::draw(painter, state);
+            frame::RecordFrame::draw(painter, state);
+            frame::NextBlockFrame::draw(painter, state);
         }
 
-        painter.clear_all().unwrap();
-        frame::GameFrame::draw(painter, state);
-        frame::RecordFrame::draw(painter, state);
-        frame::NextBlockFrame::draw(painter, state);
+        state.handle_signal.store(true, Ordering::Release);
+        state.timer.resume();
     }
 
     fn quit(_: &Arc<painter::Painter>, state: &Arc<state::State>) {
@@ -256,6 +269,7 @@ impl Handler {
             drop(lock);
             !valid
         } {
+            *state.message.lock().unwrap() = Some(String::from("block stack overflow"));
             Self::quit(painter, state);
         }
 
@@ -316,6 +330,7 @@ impl Handler {
                     match event::Event::from(event) {
                         event::Event::Toggle => Self::resume(&painter, &state),
                         event::Event::Quit => Self::quit(&painter, &state),
+                        event::Event::Resize => Self::resize(&painter, &state),
                         _ => {}
                     }
                     painter.flush().unwrap();

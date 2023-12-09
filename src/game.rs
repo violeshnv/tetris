@@ -38,26 +38,26 @@ impl Game {
         }
     }
 
-    pub fn start(&mut self) {
-        if let Some(((col, c), (row, r))) = {
+    pub fn start(&mut self) -> Result<(), String> {
+        if let Err(((col, c), (row, r))) = {
             frame::GameFrame::flush_terminal_size(&self.painter);
             frame::GameFrame::test_terminal_size(&self.state)
         } {
-            println!(
+            return Err(format!(
                 concat!(
                     "terminal screen (column x row) too small: ",
                     "current screen is {}x{} , ",
                     "need at least {}x{}"
                 ),
                 col, row, c, r
-            );
-            return;
+            ));
+        } else {
+            let (timer_rx, event_rx) = self.trigger.start(self.painter.clone(), self.state.clone());
+            self.handler
+                .start(self.painter.clone(), self.state.clone(), timer_rx, event_rx);
+
+            self.state.timer.resume();
+            Ok(())
         }
-
-        let (timer_rx, event_rx) = self.trigger.start(self.painter.clone(), self.state.clone());
-        self.handler
-            .start(self.painter.clone(), self.state.clone(), timer_rx, event_rx);
-
-        self.state.timer.resume();
     }
 }

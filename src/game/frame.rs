@@ -79,35 +79,33 @@ pub trait Frame {
         painter.resize(size).unwrap();
     }
 
-    fn test_terminal_size(state: &Arc<state::State>) -> Option<((u16, u16), (u16, u16))> {
+    fn test_terminal_size(
+        state: &Arc<state::State>,
+    ) -> Result<((u16, u16), (u16, u16)), ((u16, u16), (u16, u16))> {
         let (col, row) = Self::get_terminal_size();
 
         let (c, r) = state.get_game_size();
         let (c, r) = (c + 2 + RIGHT_SIDE_WIDTH, r + 2);
 
         if row >= r && col >= c {
-            None
+            Ok(((col, c), (row, r)))
         } else {
-            Some(((col, c), (row, r)))
+            Err(((col, c), (row, r)))
         }
     }
 
     /// (top, bottom, left, right, middle)
     fn get_global_borders(state: &Arc<state::State>) -> (u16, u16, u16, u16, u16) {
-        // top bottom left right middle
-        let (col, row) = (
-            TERMINAL_WIDTH.load(Ordering::Relaxed),
-            TERMINAL_HEIGHT.load(Ordering::Relaxed),
-        );
-
-        let (c, r) = state.get_game_size();
-        let (c, r) = (c + 2, r + 2);
+        let ((col, c), (row, r)) = Self::test_terminal_size(state).unwrap_or_else(|_| {
+            *state.message.lock().unwrap() = Some(String::from("terminal size is too small"));
+            panic!("terminal size is too small");
+        });
 
         let top = (row - r) / 2;
         let bottom = top + r - 1;
-        let left = (col - c - RIGHT_SIDE_WIDTH) / 2;
-        let middle = left + c - 1;
-        let right = middle + RIGHT_SIDE_WIDTH;
+        let left = (col - c) / 2;
+        let right = left + c - 1;
+        let middle = right - RIGHT_SIDE_WIDTH;
 
         (top, bottom, left, right, middle)
     }
