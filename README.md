@@ -1,6 +1,9 @@
 # tetris game
 
-I've been learning rust for three days and using multithreading for the first time, and will take this as a result.
+I downloaded `bastard`, a tetris game, on linux, and then realized that its block selection is not random (which is why I encountered O ten times in a row). 🤔
+
+It just so happens that I've been learning Rust and multithreading for the last three days, so I wrote this game. I won't be playing this game after writing it though, I guess. 😬
+
 
 ## compile
 
